@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\GeminiJob;
 use Illuminate\Support\Facades\Redis;
+use Illuminate\Support\Facades\Log;
 
 class GeminiEventPublisher
 {
@@ -73,5 +74,13 @@ class GeminiEventPublisher
             $maxLen,
             true
         );
+
+        Log::info('gemini.events.published', [
+            'event_type' => $eventType,
+            'stream' => $stream,
+            'job_id' => (string) $job->id,
+            'status' => (string) ($job->status ?? ''),
+            'attempt' => (int) ($job->attempt ?? 0),
+        ]);
     }
 }

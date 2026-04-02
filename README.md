@@ -62,3 +62,10 @@ php artisan queue:work redis --queue=gemini-process --tries=3 --timeout=1800
 - `docker-compose.prod.yml` поднимает `traefik` и автоматически получает TLS-сертификат Let's Encrypt.
 - Обязательные переменные в `.env`: `APP_URL`, `GEMINI_DOMAIN`, `TRAEFIK_ACME_EMAIL`.
 - Для домена `gemini.crm.liveboook.ru` A/AAAA запись должна указывать на IP VPS с этим compose.
+
+### Логи в Docker
+- В production `LOG_CHANNEL=stderr`, поэтому Laravel/PHP-логи идут в `docker logs`.
+- Для worker включен `queue:work --verbose`, чтобы видеть обработку задач в stdout/stderr.
+- `REDIS_QUEUE_RETRY_AFTER` должен быть больше `GEMINI_JOB_TIMEOUT_SECONDS` (по умолчанию 2100 > 1800), чтобы долгие задачи не пере-брались очередью раньше времени.
+- Быстрый просмотр:
+  - `docker compose --env-file .env -f docker-compose.prod.yml logs -f app worker nginx`

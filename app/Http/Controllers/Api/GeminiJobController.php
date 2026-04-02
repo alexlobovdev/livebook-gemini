@@ -8,6 +8,7 @@ use App\Models\GeminiJob;
 use App\Services\GeminiEventPublisher;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 
 class GeminiJobController extends Controller
@@ -38,6 +39,12 @@ class GeminiJobController extends Controller
 
         $existing = GeminiJob::query()->where('idempotency_key', $idempotencyKey)->first();
         if ($existing) {
+            Log::info('gemini.api.job_idempotent_replay', [
+                'job_id' => (string) $existing->id,
+                'source_system' => (string) ($existing->source_system ?? ''),
+                'source_entity_type' => (string) ($existing->source_entity_type ?? ''),
+                'source_entity_id' => $existing->source_entity_id !== null ? (int) $existing->source_entity_id : null,
+            ]);
             return response()->json([
                 'job' => $this->presentJob($existing),
                 'idempotent_replay' => true,
@@ -63,6 +70,14 @@ class GeminiJobController extends Controller
 
         ProcessGeminiJob::dispatch((string) $job->id);
         $eventPublisher->publish('job.queued', $job);
+        Log::info('gemini.api.job_queued', [
+            'job_id' => (string) $job->id,
+            'source_system' => (string) ($job->source_system ?? ''),
+            'source_entity_type' => (string) ($job->source_entity_type ?? ''),
+            'source_entity_id' => $job->source_entity_id !== null ? (int) $job->source_entity_id : null,
+            'input_images_count' => count(is_array($job->input_images) ? $job->input_images : []),
+            'prompt_chars' => mb_strlen((string) ($job->prompt ?? '')),
+        ]);
 
         return response()->json([
             'job' => $this->presentJob($job),
@@ -73,6 +88,11 @@ class GeminiJobController extends Controller
     public function show(string $jobId): JsonResponse
     {
         $job = GeminiJob::query()->findOrFail($jobId);
+        Log::debug('gemini.api.job_status_requested', [
+            'job_id' => (string) $job->id,
+            'status' => (string) ($job->status ?? ''),
+            'attempt' => (int) ($job->attempt ?? 0),
+        ]);
 
         return response()->json([
             'job' => $this->presentJob($job),
@@ -102,6 +122,12 @@ class GeminiJobController extends Controller
         $job->save();
 
         ProcessGeminiJob::dispatch((string) $job->id);
+        Log::info('gemini.api.job_requeued', [
+            'job_id' => (string) $job->id,
+            'source_system' => (string) ($job->source_system ?? ''),
+            'source_entity_type' => (string) ($job->source_entity_type ?? ''),
+            'source_entity_id' => $job->source_entity_id !== null ? (int) $job->source_entity_id : null,
+        ]);
 
         return response()->json([
             'job' => $this->presentJob($job),
