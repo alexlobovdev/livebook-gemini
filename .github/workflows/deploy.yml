@@ -1,0 +1,38 @@
+name: Deploy
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ["main"]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Prepare SSH key
+        run: |
+          install -m 700 -d ~/.ssh
+          echo "$VPS_SSH_KEY_B64" | base64 -d > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "$VPS_HOST" >> ~/.ssh/known_hosts 2>/dev/null || true
+        env:
+          VPS_SSH_KEY_B64: ${{ secrets.VPS_SSH_KEY }}
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+
+      - name: Deploy on VPS via SSH
+        run: |
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=accept-new "$VPS_USER@$VPS_HOST" 'bash -s' << 'REMOTE'
+            set -e
+            cd /opt/gemini
+            git pull origin main
+            docker compose --env-file .env -f docker-compose.prod.yml pull || true
+            docker compose --env-file .env -f docker-compose.prod.yml up -d --build
+            docker compose --env-file .env -f docker-compose.prod.yml exec -T app composer install --no-interaction --no-dev --optimize-autoloader
+            docker compose --env-file .env -f docker-compose.prod.yml exec -T app php artisan migrate --force || true
+            docker compose --env-file .env -f docker-compose.prod.yml exec -T app php artisan config:cache || true
+          REMOTE
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
