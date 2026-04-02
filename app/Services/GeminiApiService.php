@@ -6,6 +6,7 @@ use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Http\Client\RequestException;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 
 class GeminiApiService
 {
@@ -42,7 +43,9 @@ class GeminiApiService
      *   images?: ?array<int, array{mime_type:string,base64_data:string}>,
      *   model?: ?string,
      *   aspect_ratio?: ?string,
-     *   image_size?: ?string
+     *   image_size?: ?string,
+     *   trace_job_id?: ?string,
+     *   trace_attempt?: ?int
      * }  $payload
      * @return array{
      *   mime_type: string,
@@ -54,6 +57,10 @@ class GeminiApiService
      */
     public function generateImage(array $payload): array
     {
+        $traceJobId = trim((string) ($payload['trace_job_id'] ?? ''));
+        $traceAttempt = (int) ($payload['trace_attempt'] ?? 0);
+        $requestStartedAt = microtime(true);
+
         $apiKey = trim((string) config('gemini.api_key', ''));
         if ($apiKey === '') {
             throw new \RuntimeException('GEMINI_API_KEY is not configured on gemini service.');
@@ -111,6 +118,16 @@ class GeminiApiService
             $generationConfig['imageConfig'] = $imageConfig;
         }
 
+        Log::info('gemini.api.request_started', [
+            'job_id' => $traceJobId,
+            'attempt' => $traceAttempt > 0 ? $traceAttempt : null,
+            'model' => $model,
+            'aspect_ratio' => $aspectRatio,
+            'image_size' => $imageSize,
+            'images_count' => count($inputImages),
+            'prompt_chars' => mb_strlen($prompt),
+        ]);
+
         $parts = [
             ['text' => $prompt],
         ];
@@ -140,14 +157,32 @@ class GeminiApiService
 
         $body = $response->json();
         $payloadResponse = is_array($body) ? $body : [];
+        Log::info('gemini.api.response_received', [
+            'job_id' => $traceJobId,
+            'attempt' => $traceAttempt > 0 ? $traceAttempt : null,
+            'status_code' => (int) $response->status(),
+            'duration_ms' => (int) round((microtime(true) - $requestStartedAt) * 1000),
+        ]);
         if (! $response->successful()) {
             $error = $payloadResponse['error'] ?? null;
             if (is_array($error)) {
                 $message = trim((string) ($error['message'] ?? ''));
                 if ($message !== '') {
+                    Log::error('gemini.api.request_failed', [
+                        'job_id' => $traceJobId,
+                        'attempt' => $traceAttempt > 0 ? $traceAttempt : null,
+                        'status_code' => (int) $response->status(),
+                        'error' => $message,
+                    ]);
                     throw new \RuntimeException($message);
                 }
             }
+            Log::error('gemini.api.request_failed', [
+                'job_id' => $traceJobId,
+                'attempt' => $traceAttempt > 0 ? $traceAttempt : null,
+                'status_code' => (int) $response->status(),
+                'error' => 'Gemini API request failed.',
+            ]);
             throw new \RuntimeException('Gemini API request failed.');
         }
 
@@ -219,6 +254,15 @@ class GeminiApiService
                 $texts[] = $text;
             }
         }
+
+        Log::info('gemini.api.request_completed', [
+            'job_id' => $traceJobId,
+            'attempt' => $traceAttempt > 0 ? $traceAttempt : null,
+            'response_id' => trim((string) ($payloadResponse['responseId'] ?? $payloadResponse['response_id'] ?? '')),
+            'model_version' => trim((string) ($payloadResponse['modelVersion'] ?? $payloadResponse['model_version'] ?? $model)),
+            'output_mime_type' => $outputMimeType,
+            'output_base64_size' => strlen($outputBase64),
+        ]);
 
         return [
             'mime_type' => $outputMimeType,

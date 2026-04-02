@@ -10,6 +10,7 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
+use Illuminate\Support\Facades\Log;
 use Throwable;
 
 class ProcessGeminiJob implements ShouldQueue
@@ -37,11 +38,18 @@ class ProcessGeminiJob implements ShouldQueue
 
     public function handle(GeminiApiService $geminiApiService, GeminiEventPublisher $eventPublisher): void
     {
+        $startedAt = microtime(true);
         $job = GeminiJob::query()->find($this->jobId);
         if (! $job) {
+            Log::warning('gemini.job.missing', [
+                'job_id' => $this->jobId,
+            ]);
             return;
         }
         if ($job->status === GeminiJob::STATUS_DONE) {
+            Log::info('gemini.job.skip_done', [
+                'job_id' => (string) $job->id,
+            ]);
             return;
         }
 
@@ -52,6 +60,19 @@ class ProcessGeminiJob implements ShouldQueue
         $job->error_message = null;
         $job->save();
 
+        Log::info('gemini.job.processing_started', [
+            'job_id' => (string) $job->id,
+            'attempt' => (int) $job->attempt,
+            'source_system' => (string) ($job->source_system ?? ''),
+            'source_entity_type' => (string) ($job->source_entity_type ?? ''),
+            'source_entity_id' => $job->source_entity_id !== null ? (int) $job->source_entity_id : null,
+            'model' => (string) ($job->model ?: config('gemini.image_model', '')),
+            'aspect_ratio' => (string) ($job->aspect_ratio ?? ''),
+            'image_size' => (string) ($job->image_size ?? ''),
+            'input_images_count' => count(is_array($job->input_images) ? $job->input_images : []),
+            'prompt_chars' => mb_strlen((string) $job->prompt),
+        ]);
+
         $eventPublisher->publish('job.processing', $job);
 
         $result = $geminiApiService->generateImage([
@@ -60,6 +81,8 @@ class ProcessGeminiJob implements ShouldQueue
             'aspect_ratio' => (string) ($job->aspect_ratio ?? ''),
             'image_size' => (string) ($job->image_size ?? ''),
             'images' => is_array($job->input_images) ? $job->input_images : [],
+            'trace_job_id' => (string) $job->id,
+            'trace_attempt' => (int) $job->attempt,
         ]);
 
         $resultBinary = base64_decode((string) ($result['base64_data'] ?? ''), true);
@@ -87,6 +110,18 @@ class ProcessGeminiJob implements ShouldQueue
         $job->finished_at = now();
         $job->save();
 
+        Log::info('gemini.job.processing_completed', [
+            'job_id' => (string) $job->id,
+            'attempt' => (int) $job->attempt,
+            'duration_ms' => (int) round((microtime(true) - $startedAt) * 1000),
+            'result_mime_type' => (string) ($job->result_mime_type ?? ''),
+            'result_width' => (int) ($job->result_width ?? 0),
+            'result_height' => (int) ($job->result_height ?? 0),
+            'result_size_bytes' => (int) ($job->result_size_bytes ?? 0),
+            'response_id' => (string) ($job->response_id ?? ''),
+            'model_version' => (string) ($job->model_version ?? ''),
+        ]);
+
         $eventPublisher->publish('job.completed', $job);
     }
 
@@ -104,6 +139,12 @@ class ProcessGeminiJob implements ShouldQueue
         $job->error_message = $exception?->getMessage() ?: (string) ($job->error_message ?: 'Gemini processing failed.');
         $job->finished_at = now();
         $job->save();
+
+        Log::error('gemini.job.processing_failed', [
+            'job_id' => (string) $job->id,
+            'attempt' => (int) ($job->attempt ?? 0),
+            'error' => (string) ($job->error_message ?? ''),
+        ]);
 
         app(GeminiEventPublisher::class)->publish('job.failed', $job);
     }

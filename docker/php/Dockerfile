@@ -15,6 +15,8 @@ RUN apt-get update \
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 
 COPY docker/php/entrypoint.sh /entrypoint.sh
+COPY docker/php/zz-app-logging.ini /usr/local/etc/php/conf.d/zz-app-logging.ini
+COPY docker/php/zz-fpm-logging.conf /usr/local/etc/php-fpm.d/zz-fpm-logging.conf
 
 RUN mkdir -p /var/www/app/storage/app/temp \
     && chown -R www-data:www-data /var/www/app/storage \

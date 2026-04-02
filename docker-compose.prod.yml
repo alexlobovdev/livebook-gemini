@@ -32,10 +32,14 @@ services:
     environment:
       APP_ENV: production
       APP_DEBUG: "false"
+      LOG_CHANNEL: stderr
+      LOG_STACK: stderr
+      LOG_LEVEL: ${LOG_LEVEL:-info}
       DB_HOST: db
       REDIS_HOST: redis
       QUEUE_CONNECTION: redis
       REDIS_QUEUE: ${REDIS_QUEUE:-gemini-process}
+      REDIS_QUEUE_RETRY_AFTER: ${REDIS_QUEUE_RETRY_AFTER:-2100}
     volumes:
       - ./:/var/www/app
     depends_on:
@@ -57,16 +61,21 @@ services:
       --tries=${GEMINI_JOB_TRIES:-3}
       --timeout=${GEMINI_JOB_TIMEOUT_SECONDS:-1800}
       --sleep=2
+      --verbose
       --memory=768"
     env_file:
       - ./.env
     environment:
       APP_ENV: production
       APP_DEBUG: "false"
+      LOG_CHANNEL: stderr
+      LOG_STACK: stderr
+      LOG_LEVEL: ${LOG_LEVEL:-info}
       DB_HOST: db
       REDIS_HOST: redis
       QUEUE_CONNECTION: redis
       REDIS_QUEUE: ${REDIS_QUEUE:-gemini-process}
+      REDIS_QUEUE_RETRY_AFTER: ${REDIS_QUEUE_RETRY_AFTER:-2100}
     volumes:
       - ./:/var/www/app
     depends_on:
