@@ -1,4 +1,26 @@
 services:
+  traefik:
+    image: traefik:v3.6
+    container_name: gemini_traefik
+    command:
+      - --api.dashboard=false
+      - --providers.docker=true
+      - --providers.docker.exposedbydefault=false
+      - --entrypoints.web.address=:80
+      - --entrypoints.websecure.address=:443
+      - --certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web
+      - --certificatesresolvers.letsencrypt.acme.storage=/acme/acme.json
+      - --certificatesresolvers.letsencrypt.acme.email=${TRAEFIK_ACME_EMAIL:-admin@liveboook.ru}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - traefik_acme:/acme
+    networks:
+      - gemini
+    restart: unless-stopped
+
   app:
     build:
       context: .
@@ -64,8 +86,20 @@ services:
       - ./:/var/www/app:ro
     depends_on:
       - app
-    ports:
-      - "${GEMINI_HTTP_PORT:-8080}:80"
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=gemini
+      - traefik.http.services.gemini.loadbalancer.server.port=80
+      - traefik.http.routers.gemini.rule=Host(`${GEMINI_DOMAIN:-gemini.crm.liveboook.ru}`)
+      - traefik.http.routers.gemini.entrypoints=websecure
+      - traefik.http.routers.gemini.tls=true
+      - traefik.http.routers.gemini.tls.certresolver=letsencrypt
+      - traefik.http.routers.gemini-http.rule=Host(`${GEMINI_DOMAIN:-gemini.crm.liveboook.ru}`)
+      - traefik.http.routers.gemini-http.entrypoints=web
+      - traefik.http.routers.gemini-http.service=gemini
+      - traefik.http.routers.gemini-http.middlewares=redirect-gemini
+      - traefik.http.middlewares.redirect-gemini.redirectscheme.scheme=https
+      - traefik.http.middlewares.redirect-gemini.redirectscheme.permanent=true
     networks:
       - gemini
     restart: unless-stopped
@@ -104,5 +138,6 @@ networks:
     driver: bridge
 
 volumes:
+  traefik_acme:
   db_data:
   redis_data:

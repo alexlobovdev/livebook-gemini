@@ -57,3 +57,8 @@ php artisan queue:work redis --queue=gemini-process --tries=3 --timeout=1800
 ### Production файлы
 - `docker-compose.prod.yml`
 - `.env.production.example`
+
+### HTTPS в production
+- `docker-compose.prod.yml` поднимает `traefik` и автоматически получает TLS-сертификат Let's Encrypt.
+- Обязательные переменные в `.env`: `APP_URL`, `GEMINI_DOMAIN`, `TRAEFIK_ACME_EMAIL`.
+- Для домена `gemini.crm.liveboook.ru` A/AAAA запись должна указывать на IP VPS с этим compose.
