@@ -32,6 +32,7 @@ jobs:
             docker compose --env-file .env -f docker-compose.prod.yml exec -T app composer install --no-interaction --no-dev --optimize-autoloader
             docker compose --env-file .env -f docker-compose.prod.yml exec -T app php artisan migrate --force || true
             docker compose --env-file .env -f docker-compose.prod.yml exec -T app php artisan config:cache || true
+            docker compose --env-file .env -f docker-compose.prod.yml up -d --no-deps --force-recreate worker
           REMOTE
         env:
           VPS_HOST: ${{ secrets.VPS_HOST }}

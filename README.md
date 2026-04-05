@@ -32,7 +32,7 @@ php artisan serve --host=0.0.0.0 --port=8080
 ```
 5. Запустить worker:
 ```bash
-php artisan queue:work redis --queue=gemini-process --tries=3 --timeout=1800
+php artisan queue:work "${GEMINI_QUEUE_CONNECTION:-redis}" --queue="${GEMINI_QUEUE_NAME:-gemini-process},default" --tries=3 --timeout=1800
 ```
 
 ## Документация

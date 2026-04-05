@@ -1,5 +1,15 @@
 <?php
 
+$queueConnection = trim((string) env('GEMINI_QUEUE_CONNECTION', (string) env('QUEUE_CONNECTION', 'redis')));
+if ($queueConnection === '') {
+    $queueConnection = 'redis';
+}
+
+$queueName = trim((string) env('GEMINI_QUEUE_NAME', (string) env('REDIS_QUEUE', 'gemini-process')));
+if ($queueName === '') {
+    $queueName = 'gemini-process';
+}
+
 return [
     'service_token' => env('GEMINI_SERVICE_TOKEN', ''),
 
@@ -12,7 +22,8 @@ return [
     'request_retries' => (int) env('GEMINI_REQUEST_RETRIES', 2),
     'retry_delay_ms' => (int) env('GEMINI_RETRY_DELAY_MS', 500),
 
-    'queue_name' => env('GEMINI_QUEUE_NAME', 'gemini-process'),
+    'queue_connection' => $queueConnection,
+    'queue_name' => $queueName,
     'job_tries' => (int) env('GEMINI_JOB_TRIES', 3),
     'job_timeout' => (int) env('GEMINI_JOB_TIMEOUT_SECONDS', 1800),
     'job_backoff' => array_values(array_filter(array_map(
