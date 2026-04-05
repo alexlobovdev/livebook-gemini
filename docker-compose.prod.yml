@@ -56,8 +56,8 @@ services:
     container_name: gemini_worker
     working_dir: /var/www/app
     command: >
-      sh -c "php artisan queue:work ${GEMINI_QUEUE_CONNECTION:-redis}
-      --queue=${GEMINI_QUEUE_NAME:-gemini-process},default
+      sh -c "php artisan queue:work redis
+      --queue=gemini-process,default
       --tries=${GEMINI_JOB_TRIES:-3}
       --timeout=${GEMINI_JOB_TIMEOUT_SECONDS:-1800}
       --sleep=2

@@ -68,14 +68,8 @@ class GeminiJobController extends Controller
             'queued_at' => now(),
         ]);
 
-        $queueConnection = trim((string) config('gemini.queue_connection', 'redis'));
-        if ($queueConnection === '') {
-            $queueConnection = 'redis';
-        }
-        $queueName = trim((string) config('gemini.queue_name', 'gemini-process'));
-        if ($queueName === '') {
-            $queueName = 'gemini-process';
-        }
+        $queueConnection = ProcessGeminiJob::QUEUE_CONNECTION;
+        $queueName = ProcessGeminiJob::QUEUE_NAME;
 
         ProcessGeminiJob::dispatch((string) $job->id)
             ->onConnection($queueConnection)
@@ -134,14 +128,8 @@ class GeminiJobController extends Controller
         $job->finished_at = null;
         $job->save();
 
-        $queueConnection = trim((string) config('gemini.queue_connection', 'redis'));
-        if ($queueConnection === '') {
-            $queueConnection = 'redis';
-        }
-        $queueName = trim((string) config('gemini.queue_name', 'gemini-process'));
-        if ($queueName === '') {
-            $queueName = 'gemini-process';
-        }
+        $queueConnection = ProcessGeminiJob::QUEUE_CONNECTION;
+        $queueName = ProcessGeminiJob::QUEUE_NAME;
 
         ProcessGeminiJob::dispatch((string) $job->id)
             ->onConnection($queueConnection)

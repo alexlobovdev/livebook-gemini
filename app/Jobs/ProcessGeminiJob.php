@@ -17,6 +17,10 @@ class ProcessGeminiJob implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
+    public const QUEUE_CONNECTION = 'redis';
+
+    public const QUEUE_NAME = 'gemini-process';
+
     public int $tries;
 
     public int $timeout;
@@ -33,18 +37,8 @@ class ProcessGeminiJob implements ShouldQueue
         $configuredBackoff = config('gemini.job_backoff', [15, 60, 180]);
         $this->backoff = is_array($configuredBackoff) ? array_values(array_map('intval', $configuredBackoff)) : [15, 60, 180];
 
-        $queueConnection = trim((string) config('gemini.queue_connection', 'redis'));
-        if ($queueConnection === '') {
-            $queueConnection = 'redis';
-        }
-
-        $queueName = trim((string) config('gemini.queue_name', 'gemini-process'));
-        if ($queueName === '') {
-            $queueName = 'gemini-process';
-        }
-
-        $this->onConnection($queueConnection);
-        $this->onQueue($queueName);
+        $this->onConnection(self::QUEUE_CONNECTION);
+        $this->onQueue(self::QUEUE_NAME);
     }
 
     public function handle(GeminiApiService $geminiApiService, GeminiEventPublisher $eventPublisher): void
