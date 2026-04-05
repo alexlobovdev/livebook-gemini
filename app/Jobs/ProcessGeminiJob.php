@@ -52,10 +52,21 @@ class ProcessGeminiJob implements ShouldQueue
         $startedAt = microtime(true);
         $job = GeminiJob::query()->find($this->jobId);
         if (! $job) {
-            Log::warning('gemini.job.missing', [
+            $dbConnection = (string) config('database.default', '');
+            $dbName = '';
+            if ($dbConnection !== '') {
+                $dbName = (string) config("database.connections.{$dbConnection}.database", '');
+            }
+
+            Log::error('gemini.job.missing', [
                 'job_id' => $this->jobId,
+                'queue_connection' => (string) ($this->connection ?? ''),
+                'queue_name' => (string) ($this->queue ?? ''),
+                'db_connection' => $dbConnection,
+                'db_database' => $dbName,
             ]);
-            return;
+
+            throw new \RuntimeException("Gemini job not found in DB: {$this->jobId}");
         }
         if ($job->status === GeminiJob::STATUS_DONE) {
             Log::info('gemini.job.skip_done', [

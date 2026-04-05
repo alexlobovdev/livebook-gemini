@@ -68,13 +68,26 @@ class GeminiJobController extends Controller
             'queued_at' => now(),
         ]);
 
-        ProcessGeminiJob::dispatch((string) $job->id);
+        $queueConnection = trim((string) config('gemini.queue_connection', 'redis'));
+        if ($queueConnection === '') {
+            $queueConnection = 'redis';
+        }
+        $queueName = trim((string) config('gemini.queue_name', 'gemini-process'));
+        if ($queueName === '') {
+            $queueName = 'gemini-process';
+        }
+
+        ProcessGeminiJob::dispatch((string) $job->id)
+            ->onConnection($queueConnection)
+            ->onQueue($queueName);
         $eventPublisher->publish('job.queued', $job);
         Log::info('gemini.api.job_queued', [
             'job_id' => (string) $job->id,
             'source_system' => (string) ($job->source_system ?? ''),
             'source_entity_type' => (string) ($job->source_entity_type ?? ''),
             'source_entity_id' => $job->source_entity_id !== null ? (int) $job->source_entity_id : null,
+            'queue_connection' => $queueConnection,
+            'queue_name' => $queueName,
             'input_images_count' => count(is_array($job->input_images) ? $job->input_images : []),
             'prompt_chars' => mb_strlen((string) ($job->prompt ?? '')),
         ]);
@@ -121,12 +134,25 @@ class GeminiJobController extends Controller
         $job->finished_at = null;
         $job->save();
 
-        ProcessGeminiJob::dispatch((string) $job->id);
+        $queueConnection = trim((string) config('gemini.queue_connection', 'redis'));
+        if ($queueConnection === '') {
+            $queueConnection = 'redis';
+        }
+        $queueName = trim((string) config('gemini.queue_name', 'gemini-process'));
+        if ($queueName === '') {
+            $queueName = 'gemini-process';
+        }
+
+        ProcessGeminiJob::dispatch((string) $job->id)
+            ->onConnection($queueConnection)
+            ->onQueue($queueName);
         Log::info('gemini.api.job_requeued', [
             'job_id' => (string) $job->id,
             'source_system' => (string) ($job->source_system ?? ''),
             'source_entity_type' => (string) ($job->source_entity_type ?? ''),
             'source_entity_id' => $job->source_entity_id !== null ? (int) $job->source_entity_id : null,
+            'queue_connection' => $queueConnection,
+            'queue_name' => $queueName,
         ]);
 
         return response()->json([
