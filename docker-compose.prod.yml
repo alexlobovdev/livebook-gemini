@@ -55,14 +55,17 @@ services:
       dockerfile: docker/php/Dockerfile
     container_name: gemini_worker
     working_dir: /var/www/app
-    command: >
-      sh -c "php artisan queue:work redis
-      --queue=gemini-process,default
-      --tries=${GEMINI_JOB_TRIES:-3}
-      --timeout=${GEMINI_JOB_TIMEOUT_SECONDS:-1800}
-      --sleep=2
-      --verbose
-      --memory=768"
+    command:
+      - sh
+      - -lc
+      - >-
+        php artisan queue:work redis
+        --queue=gemini-process,default
+        --tries=${GEMINI_JOB_TRIES:-3}
+        --timeout=${GEMINI_JOB_TIMEOUT_SECONDS:-1800}
+        --sleep=2
+        --verbose
+        --memory=768
     env_file:
       - ./.env
     environment:

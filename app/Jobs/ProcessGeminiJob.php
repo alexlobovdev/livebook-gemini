@@ -17,9 +17,9 @@ class ProcessGeminiJob implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
-    public const QUEUE_CONNECTION = 'redis';
+    public const DEFAULT_QUEUE_CONNECTION = 'redis';
 
-    public const QUEUE_NAME = 'gemini-process';
+    public const DEFAULT_QUEUE_NAME = 'gemini-process';
 
     public int $tries;
 
@@ -37,8 +37,22 @@ class ProcessGeminiJob implements ShouldQueue
         $configuredBackoff = config('gemini.job_backoff', [15, 60, 180]);
         $this->backoff = is_array($configuredBackoff) ? array_values(array_map('intval', $configuredBackoff)) : [15, 60, 180];
 
-        $this->onConnection(self::QUEUE_CONNECTION);
-        $this->onQueue(self::QUEUE_NAME);
+        $this->onConnection(self::queueConnection());
+        $this->onQueue(self::queueName());
+    }
+
+    public static function queueConnection(): string
+    {
+        $connection = trim((string) config('gemini.queue_connection', self::DEFAULT_QUEUE_CONNECTION));
+
+        return $connection !== '' ? $connection : self::DEFAULT_QUEUE_CONNECTION;
+    }
+
+    public static function queueName(): string
+    {
+        $queueName = trim((string) config('gemini.queue_name', self::DEFAULT_QUEUE_NAME));
+
+        return $queueName !== '' ? $queueName : self::DEFAULT_QUEUE_NAME;
     }
 
     public function handle(GeminiApiService $geminiApiService, GeminiEventPublisher $eventPublisher): void
@@ -62,9 +76,10 @@ class ProcessGeminiJob implements ShouldQueue
 
             throw new \RuntimeException("Gemini job not found in DB: {$this->jobId}");
         }
-        if ($job->status === GeminiJob::STATUS_DONE) {
-            Log::info('gemini.job.skip_done', [
+        if (in_array($job->status, [GeminiJob::STATUS_DONE, GeminiJob::STATUS_CANCELLED], true)) {
+            Log::info('gemini.job.skip_terminal', [
                 'job_id' => (string) $job->id,
+                'status' => (string) $job->status,
             ]);
             return;
         }
@@ -113,6 +128,16 @@ class ProcessGeminiJob implements ShouldQueue
             throw new \RuntimeException('Unable to read generated image dimensions.');
         }
 
+        $latestStatus = (string) (GeminiJob::query()->where('id', $job->id)->value('status') ?? '');
+        if ($latestStatus === GeminiJob::STATUS_CANCELLED) {
+            Log::info('gemini.job.skip_save_cancelled', [
+                'job_id' => (string) $job->id,
+                'attempt' => (int) ($job->attempt ?? 0),
+            ]);
+
+            return;
+        }
+
         $job->status = GeminiJob::STATUS_DONE;
         $job->result_mime_type = (string) ($result['mime_type'] ?? 'image/png');
         $job->result_base64_data = (string) ($result['base64_data'] ?? '');
@@ -147,7 +172,7 @@ class ProcessGeminiJob implements ShouldQueue
         if (! $job) {
             return;
         }
-        if ($job->status === GeminiJob::STATUS_DONE) {
+        if (in_array($job->status, [GeminiJob::STATUS_DONE, GeminiJob::STATUS_CANCELLED], true)) {
             return;
         }
 

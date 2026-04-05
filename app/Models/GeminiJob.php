@@ -14,6 +14,8 @@ class GeminiJob extends Model
 
     public const STATUS_FAILED = 'failed';
 
+    public const STATUS_CANCELLED = 'cancelled';
+
     protected $table = 'gemini_jobs';
 
     public $incrementing = false;

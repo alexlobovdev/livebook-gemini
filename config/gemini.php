@@ -36,4 +36,16 @@ return [
         'stream' => env('GEMINI_EVENTS_STREAM', 'gemini:events'),
         'max_len' => (int) env('GEMINI_EVENTS_MAX_LEN', 10000),
     ],
+
+    'crm_callback' => [
+        'url' => env('CRM_GEMINI_CALLBACK_URL', ''),
+        'token' => env('CRM_GEMINI_CALLBACK_TOKEN', ''),
+        'connect_timeout' => (int) env('CRM_GEMINI_CALLBACK_CONNECT_TIMEOUT_SECONDS', 5),
+        'timeout' => (int) env('CRM_GEMINI_CALLBACK_TIMEOUT_SECONDS', 20),
+    ],
+
+    'heartbeat' => [
+        'interval_seconds' => (int) env('GEMINI_HEARTBEAT_INTERVAL_SECONDS', 60),
+        'max_messages' => (int) env('GEMINI_HEARTBEAT_MAX_MESSAGES', 240),
+    ],
 ];

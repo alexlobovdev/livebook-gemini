@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Jobs\PublishGeminiJobHeartbeat;
 use App\Jobs\ProcessGeminiJob;
 use App\Models\GeminiJob;
 use App\Services\GeminiEventPublisher;
@@ -68,10 +69,14 @@ class GeminiJobController extends Controller
             'queued_at' => now(),
         ]);
 
-        $queueConnection = ProcessGeminiJob::QUEUE_CONNECTION;
-        $queueName = ProcessGeminiJob::QUEUE_NAME;
+        $queueConnection = ProcessGeminiJob::queueConnection();
+        $queueName = ProcessGeminiJob::queueName();
 
         ProcessGeminiJob::dispatch((string) $job->id)
+            ->onConnection($queueConnection)
+            ->onQueue($queueName);
+        PublishGeminiJobHeartbeat::dispatch((string) $job->id, 1)
+            ->delay(now()->addSeconds(max(5, (int) config('gemini.heartbeat.interval_seconds', 60))))
             ->onConnection($queueConnection)
             ->onQueue($queueName);
         $eventPublisher->publish('job.queued', $job);
@@ -109,8 +114,8 @@ class GeminiJobController extends Controller
     public function retry(string $jobId): JsonResponse
     {
         $job = GeminiJob::query()->findOrFail($jobId);
-        if ($job->status !== GeminiJob::STATUS_FAILED) {
-            abort(409, 'Retry is available only for failed jobs.');
+        if (! in_array($job->status, [GeminiJob::STATUS_FAILED, GeminiJob::STATUS_CANCELLED], true)) {
+            abort(409, 'Retry is available only for failed/cancelled jobs.');
         }
 
         $job->status = GeminiJob::STATUS_QUEUED;
@@ -128,10 +133,14 @@ class GeminiJobController extends Controller
         $job->finished_at = null;
         $job->save();
 
-        $queueConnection = ProcessGeminiJob::QUEUE_CONNECTION;
-        $queueName = ProcessGeminiJob::QUEUE_NAME;
+        $queueConnection = ProcessGeminiJob::queueConnection();
+        $queueName = ProcessGeminiJob::queueName();
 
         ProcessGeminiJob::dispatch((string) $job->id)
+            ->onConnection($queueConnection)
+            ->onQueue($queueName);
+        PublishGeminiJobHeartbeat::dispatch((string) $job->id, 1)
+            ->delay(now()->addSeconds(max(5, (int) config('gemini.heartbeat.interval_seconds', 60))))
             ->onConnection($queueConnection)
             ->onQueue($queueName);
         Log::info('gemini.api.job_requeued', [
@@ -146,6 +155,35 @@ class GeminiJobController extends Controller
         return response()->json([
             'job' => $this->presentJob($job),
         ], 202);
+    }
+
+    public function cancel(string $jobId, GeminiEventPublisher $eventPublisher): JsonResponse
+    {
+        $job = GeminiJob::query()->findOrFail($jobId);
+        $currentStatus = (string) ($job->status ?? '');
+
+        if (in_array($currentStatus, [GeminiJob::STATUS_DONE, GeminiJob::STATUS_FAILED, GeminiJob::STATUS_CANCELLED], true)) {
+            return response()->json([
+                'job' => $this->presentJob($job),
+            ]);
+        }
+
+        $job->status = GeminiJob::STATUS_CANCELLED;
+        $job->error_message = trim((string) ($job->error_message ?: 'Gemini job cancelled by request.'));
+        $job->finished_at = $job->finished_at ?: now();
+        $job->save();
+
+        $eventPublisher->publish('job.cancelled', $job);
+        Log::info('gemini.api.job_cancelled', [
+            'job_id' => (string) $job->id,
+            'source_system' => (string) ($job->source_system ?? ''),
+            'source_entity_type' => (string) ($job->source_entity_type ?? ''),
+            'source_entity_id' => $job->source_entity_id !== null ? (int) $job->source_entity_id : null,
+        ]);
+
+        return response()->json([
+            'job' => $this->presentJob($job),
+        ]);
     }
 
     public function health(): JsonResponse

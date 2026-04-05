@@ -11,9 +11,6 @@ class GeminiEventPublisher
     public function publish(string $eventType, GeminiJob $job, array $extra = []): void
     {
         $stream = trim((string) config('gemini.events.stream', 'gemini:events'));
-        if ($stream === '') {
-            return;
-        }
 
         $payload = [
             'event_id' => (string) \Illuminate\Support\Str::uuid(),
@@ -55,6 +52,13 @@ class GeminiEventPublisher
             ];
         }
 
+        if ($job->status === GeminiJob::STATUS_CANCELLED) {
+            $payload['error'] = [
+                'message' => (string) ($job->error_message ?: 'Gemini job cancelled by request.'),
+                'retryable' => false,
+            ];
+        }
+
         if ($extra !== []) {
             $payload = array_replace_recursive($payload, $extra);
         }
@@ -67,20 +71,35 @@ class GeminiEventPublisher
         $connection = (string) config('gemini.events.redis_connection', 'default');
         $maxLen = max(1000, (int) config('gemini.events.max_len', 10000));
 
-        Redis::connection($connection)->xadd(
-            $stream,
-            '*',
-            ['payload' => $encoded],
-            $maxLen,
-            true
-        );
+        if ($stream !== '') {
+            try {
+                Redis::connection($connection)->xadd(
+                    $stream,
+                    '*',
+                    ['payload' => $encoded],
+                    $maxLen,
+                    true
+                );
 
-        Log::info('gemini.events.published', [
-            'event_type' => $eventType,
-            'stream' => $stream,
-            'job_id' => (string) $job->id,
-            'status' => (string) ($job->status ?? ''),
-            'attempt' => (int) ($job->attempt ?? 0),
-        ]);
+                Log::info('gemini.events.published', [
+                    'event_type' => $eventType,
+                    'stream' => $stream,
+                    'job_id' => (string) $job->id,
+                    'status' => (string) ($job->status ?? ''),
+                    'attempt' => (int) ($job->attempt ?? 0),
+                ]);
+            } catch (\Throwable $e) {
+                Log::warning('gemini.events.redis_publish_failed', [
+                    'event_type' => $eventType,
+                    'stream' => $stream,
+                    'job_id' => (string) $job->id,
+                    'status' => (string) ($job->status ?? ''),
+                    'attempt' => (int) ($job->attempt ?? 0),
+                    'error' => mb_substr($e->getMessage(), 0, 500),
+                ]);
+            }
+        }
+
+        app(CrmCallbackClient::class)->send($payload);
     }
 }

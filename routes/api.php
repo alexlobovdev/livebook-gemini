@@ -7,5 +7,6 @@ Route::prefix('v1')->middleware('service.token')->group(function (): void {
     Route::post('/jobs', [GeminiJobController::class, 'store']);
     Route::get('/jobs/{jobId}', [GeminiJobController::class, 'show']);
     Route::post('/jobs/{jobId}/retry', [GeminiJobController::class, 'retry']);
+    Route::post('/jobs/{jobId}/cancel', [GeminiJobController::class, 'cancel']);
     Route::get('/health', [GeminiJobController::class, 'health']);
 });
